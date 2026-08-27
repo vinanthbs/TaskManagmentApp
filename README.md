@@ -1,100 +1,112 @@
 # Task Management API
 
-A secure Spring Boot backend for managing users and tasks. The application supports user registration and login, JWT-based authentication, and task CRUD operations backed by PostgreSQL.
-
-## Overview
-
-This project is designed as a lightweight task management system where users can:
-
-- create an account
-- log in securely
-- create tasks
-- view all tasks
-- view a task by ID
-- update existing tasks
-
-The backend uses Spring Security and JWT to protect task endpoints while allowing public access to user registration and login routes.
+A secure Spring Boot REST API for managing users and tasks, featuring JWT authentication, BCrypt password hashing, and PostgreSQL persistence.
 
 ## Tech Stack
 
 - Java 17
 - Spring Boot 4.0.5
-- Spring Web MVC
-- Spring Data JPA
+- Spring Security + JWT
+- Spring Data JPA / Hibernate
 - PostgreSQL
-- Spring Security
-- JWT (jjwt)
 - Maven
+- AWS EC2 + RDS
 
 ## Features
 
-- User registration with password hashing via BCrypt
-- User authentication via JWT token generation
-- Protected task endpoints requiring a valid bearer token
-- Task persistence to PostgreSQL
-- Global exception handling for invalid credentials and missing records
-- Support for task lifecycle statuses such as `To Do`, `In Progress`, and other custom statuses
+- User registration and login
+- BCrypt password hashing
+- JWT-based authentication
+- Protected task endpoints
+- Task CRUD operations
+- PostgreSQL persistence
+- Global exception handling
+- AWS deployment with automatic application startup via systemd
+
+## Architecture
+
+### AWS Deployment
+
+```mermaid
+flowchart LR
+    Client["Client / Postman"]
+    EC2["AWS EC2<br/>Ubuntu + systemd<br/>Spring Boot :8080"]
+    RDS["AWS RDS<br/>PostgreSQL :5432"]
+
+    Client -->|"HTTP :8080"| EC2
+    EC2 -->|"PostgreSQL :5432<br/>SSL"| RDS
+```
+
+**Deployment flow:**
+
+```text
+Client
+  │
+  │ HTTP :8080
+  ▼
+EC2
+  │
+  ├── systemd
+  │      └── Spring Boot
+  │
+  │ PostgreSQL :5432
+  ▼
+RDS PostgreSQL
+```
+
+The Spring Boot application runs on an Ubuntu EC2 instance and connects to PostgreSQL hosted on RDS.
+
+`systemd` manages the application and automatically starts it after an EC2 reboot.
+
+Production credentials are supplied through environment variables and are not stored in the repository.
 
 ## Project Structure
 
 ```text
 Backend/
-├── src/
-│   ├── main/
-│   │   ├── java/com/example/demo/
-│   │   │   ├── Config/
-│   │   │   ├── Controller/
-│   │   │   ├── Entity/
-│   │   │   ├── Exception/
-│   │   │   ├── Repository/
-│   │   │   ├── Service/
-│   │   │   └── dto/
-│   │   └── resources/
-│   │       └── application.properties
-│   └── test/
-│       └── java/com/example/demo/
+├── src/main/java/com/example/demo/
+│   ├── Config/
+│   ├── Controller/
+│   ├── Entity/
+│   ├── Exception/
+│   ├── Repository/
+│   ├── Service/
+│   └── dto/
+├── src/main/resources/
+│   └── application.properties
+├── src/test/
 ├── pom.xml
-├── mvnw
-├── mvnw.cmd
-├── .gitignore
-└── .gitattributes
+└── mvnw
 ```
-
-## Prerequisites
-
-Before running the project, make sure you have:
-
-- Java 17+
-- Maven or the included Maven wrapper
-- PostgreSQL installed and running
-- A PostgreSQL database named `taskManager` (or update the configuration to match your setup)
 
 ## Configuration
 
-Update the database and JWT settings in `Backend/src/main/resources/application.properties`:
+The application reads database and JWT configuration from environment variables:
 
 ```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/taskManager
-spring.datasource.username=your_username
-spring.datasource.password=your_password
-spring.datasource.driver-class-name=org.postgresql.Driver
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
-spring.jpa.properties.hibernate.format_sql=true
-spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+spring.datasource.url=${DB_URL}
+spring.datasource.username=${DB_USERNAME}
+spring.datasource.password=${DB_PASSWORD}
 
-jwt.secret=YourVeryLongSecretKeyMustBeAtLeast32CharactersLong12345
+jwt.secret=${JWT_SECRET}
 jwt.expiration=86400000
+
+app.cors.allowed-origins=${CORS_ALLOWED_ORIGINS:http://localhost:5173}
 ```
 
-Important:
+Example local configuration:
 
-- ensure the PostgreSQL database exists before starting the app
-- use a production-grade secret key in real deployments
+```bash
+export DB_URL=jdbc:postgresql://localhost:5432/taskManager
+export DB_USERNAME=your_username
+export DB_PASSWORD=your_password
+export JWT_SECRET=your_secret
+export CORS_ALLOWED_ORIGINS=http://localhost:5173
+```
 
-## Running the Application
+> Never commit passwords, JWT secrets, or other credentials to Git.
 
-From the project root:
+## Running Locally
 
 ```bash
 cd Backend
@@ -102,15 +114,7 @@ cd Backend
 ./mvnw spring-boot:run
 ```
 
-On Windows, use:
-
-```powershell
-cd Backend
-mvnw.cmd clean install
-mvnw.cmd spring-boot:run
-```
-
-The app will start on the default Spring Boot port:
+The API runs on:
 
 ```text
 http://localhost:8080
@@ -118,95 +122,16 @@ http://localhost:8080
 
 ## API Endpoints
 
-### Public Routes
+| Method | Endpoint | Authentication |
+|---|---|---|
+| POST | `/user/register` | Public |
+| POST | `/user/login` | Public |
+| POST | `/task` | JWT required |
+| GET | `/task` | JWT required |
+| GET | `/task/{id}` | JWT required |
+| PUT | `/task/{id}` | JWT required |
 
-#### Register a user
-
-```http
-POST /user/register
-Content-Type: application/json
-```
-
-Request body:
-
-```json
-{
-  "username": "alice",
-  "password": "secret123"
-}
-```
-
-#### Log in a user
-
-```http
-POST /user/login
-Content-Type: application/json
-```
-
-Request body:
-
-```json
-{
-  "username": "alice",
-  "password": "secret123"
-}
-```
-
-Response: a JWT string returned as a plain text response.
-
-### Protected Routes
-
-All `/task` routes require a valid bearer token in the `Authorization` header.
-
-#### Create a task
-
-```http
-POST /task
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-Request body:
-
-```json
-{
-  "taskName": "Prepare sprint demo",
-  "status": "To Do"
-}
-```
-
-#### Get all tasks
-
-```http
-GET /task
-Authorization: Bearer <token>
-```
-
-#### Get a task by ID
-
-```http
-GET /task/{id}
-Authorization: Bearer <token>
-```
-
-#### Update a task
-
-```http
-PUT /task/{id}
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-Request body:
-
-```json
-{
-  "taskName": "Prepare sprint demo",
-  "status": "In Progress"
-}
-```
-
-## Example cURL Requests
+### Example
 
 Register:
 
@@ -224,16 +149,59 @@ curl -X POST http://localhost:8080/user/login \
   -d '{"username":"alice","password":"secret123"}'
 ```
 
-Get tasks with token:
+Use the returned JWT:
 
 ```bash
-curl -X GET http://localhost:8080/task \
+curl http://localhost:8080/task \
   -H "Authorization: Bearer <your_jwt_token>"
 ```
 
-## Notes
+## AWS Deployment
 
-- User passwords are stored as BCrypt-hashed values, not plain text.
-- Task creation automatically sets timestamps and a default status as `To Do`.
-- The project is a backend-only implementation and can be connected to a frontend client or API consumer.
-- This is a good starting point for expanding into categories, due dates, task assignments, and user-specific task ownership.
+| Component | Purpose |
+|---|---|
+| EC2 | Hosts Spring Boot application |
+| RDS PostgreSQL | Production database |
+| systemd | Application process management |
+| Security Groups | Network access control |
+
+The RDS instance accepts PostgreSQL connections from the EC2 security group on port `5432`.
+
+The application runs on EC2 using:
+
+```text
+/opt/task-management/demo-0.0.1-SNAPSHOT.jar
+```
+
+and is managed by:
+
+```text
+task-management.service
+```
+
+Useful commands:
+
+```bash
+sudo systemctl status task-management
+sudo systemctl restart task-management
+sudo journalctl -u task-management -f
+```
+
+## Deployment Verification
+
+- ✅ EC2 → RDS connectivity
+- ✅ User registration
+- ✅ Login and JWT generation
+- ✅ Protected task endpoints
+- ✅ Task CRUD
+- ✅ systemd automatic startup
+- ✅ Application verified after EC2 reboot
+
+## Future Improvements
+
+- Nginx reverse proxy
+- HTTPS / custom domain
+- AWS Secrets Manager
+- CI/CD with GitHub Actions
+- Monitoring and centralized logging
+- Docker / ECS deployment
